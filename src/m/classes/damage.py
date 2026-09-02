@@ -48,7 +48,7 @@ class damage(object):
         s += "%s\n" % fielddisplay(self, "isdamage", "is damage mechanics being used? [0 (default) or 1]")
         if self.isdamage:
             s += "%s\n" % fielddisplay(self, "D", "damage tensor (scalar for now)")
-            s += "%s\n" % fielddisplay(self, "law", "damage law ['0: analytical', '1: pralong']")
+            s += "%s\n" % fielddisplay(self, "law", "damage law ['0: analytical', '1: pralong', '2: bassis', '3: exponential (experimental)', '4: arctan (experimental)']")
             s += "%s\n" % fielddisplay(self, "spcdamage", "damage constraints (NaN means no constraint)")
             s += "%s\n" % fielddisplay(self, "max_damage", "maximum possible damage (0 <=max_damage < 1)")
             s += "%s\n" % fielddisplay(self, "stabilization", "0: no stabilization, 1: artificial diffusion, 2: SUPG (not working), 4: flux corrected transport")
@@ -115,7 +115,7 @@ class damage(object):
         if self.isdamage:
             md = checkfield(md, 'fieldname', 'damage.D', '>=', 0, '<=', self.max_damage, 'size', [md.mesh.numberofvertices])
             md = checkfield(md, 'fieldname', 'damage.max_damage', '<', 1, '>=', 0)
-            md = checkfield(md, 'fieldname', 'damage.law', 'numel', [1], 'values', [0, 1, 2, 3])
+            md = checkfield(md, 'fieldname', 'damage.law', 'numel', [1], 'values', [0, 1, 2, 3, 4])
             md = checkfield(md, 'fieldname', 'damage.spcdamage', 'Inf', 1, 'timeseries', 1)
             md = checkfield(md, 'fieldname', 'damage.stabilization', 'numel', [1], 'values', [0, 1, 2, 4])
             md = checkfield(md, 'fieldname', 'damage.maxiter', '>=', 0)

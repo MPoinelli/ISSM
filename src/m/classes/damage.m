@@ -88,7 +88,7 @@ classdef damage
 			
 			md = checkfield(md,'fieldname','damage.isdamage','values',[1,0]);
 			if self.isdamage
-				md = checkfield(md,'fieldname','damage.law','numel',[1],'values',[0,1,2,3]);
+				md = checkfield(md,'fieldname','damage.law','numel',[1],'values',[0,1,2,3,4]);
 				md = checkfield(md,'fieldname','damage.D','>=',0,'<=',self.max_damage,'size',[md.mesh.numberofvertices 1]);
 				md = checkfield(md,'fieldname','damage.spcdamage','Inf',1,'timeseries',1);
 				md = checkfield(md,'fieldname','damage.max_damage','<',1,'>=',0);
@@ -124,7 +124,7 @@ classdef damage
 
 			fielddisplay(self,'isdamage','is damage mechanics being used? {true,false}');
 			if self.isdamage
-				fielddisplay(self,'law','damage law {''0: analytical'',''1: pralong''}');
+				fielddisplay(self,'law','damage law {''0: analytical'',''1: pralong'', ''2: bassis'',''3: exponential (experimental)'',''4: arctan (experimental)''}');
 				fielddisplay(self,'D','damage tensor (scalar)');
 				fielddisplay(self,'spcdamage','damage constraints (NaN means no constraint)');
 				fielddisplay(self,'max_damage','maximum possible damage (0<=max_damage<1)');

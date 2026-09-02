@@ -145,171 +145,12 @@ void           DamageEvolutionAnalysis::CreateDamageFInput(Element* element){/*{
 	/*Clean up and return*/
 	xDelete<IssmDouble>(f);
 }/*}}}*/
-void           DamageEvolutionAnalysis::CreateDamageFInputArctan(Element* element){/*{{{*/
-	IssmDouble c1, c2, stress_threshold, stress_ubound;
-	IssmDouble damage;
-	IssmDouble yts;
-	IssmDouble principalDevStress1, principalDevStress2;
-	IssmDouble tensileStress, compressiveStress;
-
-	int domaintype, dim;
-
-	/*Fetch number of vertices and allocate output*/
-	int numnodes = element->GetNumberOfNodes();
-	IssmDouble* f   = xNew<IssmDouble>(numnodes);
-
-	/*retrieve parameters:*/
-	element->FindParam(&c1,DamageC1Enum);
-	element->FindParam(&c2,DamageC2Enum);
-	element->FindParam(&yts,ConstantsYtsEnum);
-	element->FindParam(&stress_threshold,DamageStressThresholdEnum);
-	element->FindParam(&stress_ubound,DamageStressUBoundEnum);
-	element->FindParam(&domaintype,DomainTypeEnum);
-
-	/*Get problem dimension*/
-	switch(domaintype){
-		case Domain2DhorizontalEnum: dim = 2; break;
-		case Domain3DEnum:           dim = 3; break;
-		default: _error_("not implemented");
-	}
-	/*Compute stress tensor and Stress Max Principal: */
-	element->ComputeDeviatoricStressTensor();
-
-	Input* principalDevStress1_input = element->GetInput(DeviatoricStress1Enum);     _assert_(principalDevStress1_input);
-	Input* principalDevStress2_input = element->GetInput(DeviatoricStress2Enum);     _assert_(principalDevStress2_input);
-
-	Input* damage_input = NULL;
-	if(domaintype==Domain2DhorizontalEnum){
-		damage_input = element->GetInput(DamageDbarEnum); 	_assert_(damage_input);
-	}
-	else{
-		damage_input = element->GetInput(DamageDEnum);   _assert_(damage_input);
-	}
-
-	/*Calculate damage evolution source term */
-	Gauss* gauss=element->NewGauss();
-
-	/* To keep arctan output (bounded by -pi/2 and pi/2) within the specified boundaries */
-	c1 /= (PI/2);
-	c2 /= (PI/2);
-	/* To have per second output with per annum parameters */
-	c1 /= yts;
-	c2 /= yts;
-
-	for (int i=0;i<numnodes;i++){
-		f[i] = 0;
-
-		gauss->GaussNode(element->GetElementType(),i);
-
-		damage_input->GetInputValue(&damage,gauss);
-		principalDevStress1_input->GetInputValue(&principalDevStress1,gauss);
-		principalDevStress2_input->GetInputValue(&principalDevStress2,gauss);
-
-		tensileStress     = sqrt(1.5*(pow(max(principalDevStress1, 0.), 2) + pow(max(principalDevStress2, 0.), 2)));
-		compressiveStress = sqrt(1.5*(pow(min(principalDevStress1, 0.), 2) + pow(min(principalDevStress2, 0.), 2)));
-
-		/* Calculate principal effective stresses */
-		if(dim==2){
-			f[i] = 0;
-			if(tensileStress > stress_threshold)
-				f[i] += c1*atan((tensileStress/stress_threshold - 1)/(1-damage));
-
-			if(compressiveStress < stress_ubound)
-				f[i] += c2*atan((compressiveStress/stress_ubound - 1)/(1-damage));
-		}
-		else{
-			_error_("Only 2D is implemented.");
-		}
-	}
-
-	/*Add input*/
-	element->AddInput(DamageFEnum,f,element->GetElementType());
-
-	/*Clean up and return*/
-	xDelete<IssmDouble>(f);
-	delete gauss;
-}/*}}}*/
-
-void           DamageEvolutionAnalysis::CreateDamageFInputExp(Element* element){/*{{{*/
-
-	/*Intermediaries */
-	IssmDouble epsf,stress_threshold,eps0;
-	IssmDouble damage,B,n,epseff;
-	IssmDouble eps_xx,eps_yy,eps_xy,eps1,eps2,epstmp;
-	int domaintype;
-
-	/*Fetch number of vertices and allocate output*/
-	int numnodes = element->GetNumberOfNodes();
-	IssmDouble* f   = xNew<IssmDouble>(numnodes);
-
-	/*retrieve parameters:*/
-	element->FindParam(&epsf,DamageC1Enum);
-	element->FindParam(&stress_threshold,DamageStressThresholdEnum);
-	element->FindParam(&domaintype,DomainTypeEnum);
-
-	/*Compute stress tensor: */
-	element->ComputeStrainRate();
-
-	/*retrieve what we need: */
-	Input* eps_xx_input  = element->GetInput(StrainRatexxEnum);     _assert_(eps_xx_input);
-	Input* eps_xy_input  = element->GetInput(StrainRatexyEnum);     _assert_(eps_xy_input);
-	Input* eps_yy_input  = element->GetInput(StrainRateyyEnum);     _assert_(eps_yy_input);
-	Input*  n_input=element->GetInput(MaterialsRheologyNEnum); _assert_(n_input);
-	Input* damage_input = NULL;
-	Input* B_input = NULL;
-	if(domaintype==Domain2DhorizontalEnum){
-		damage_input = element->GetInput(DamageDbarEnum); 	_assert_(damage_input);
-		B_input=element->GetInput(MaterialsRheologyBbarEnum); _assert_(B_input);
-	}
-	else{
-		damage_input = element->GetInput(DamageDEnum);   _assert_(damage_input);
-		B_input=element->GetInput(MaterialsRheologyBEnum); _assert_(B_input);
-	}
-
-	/*Calculate damage evolution source term: */
-	Gauss* gauss=element->NewGauss();
-	for (int i=0;i<numnodes;i++){
-		gauss->GaussNode(element->GetElementType(),i);
-
-		eps_xx_input->GetInputValue(&eps_xx,gauss);
-		eps_xy_input->GetInputValue(&eps_xy,gauss);
-		eps_yy_input->GetInputValue(&eps_yy,gauss);
-		B_input->GetInputValue(&B,gauss);
-		n_input->GetInputValue(&n,gauss);
-		damage_input->GetInputValue(&damage,gauss);
-
-		/*Calculate principal effective strain rates*/
-		eps1=(eps_xx+eps_yy)/2.+sqrt(pow((eps_xx-eps_yy)/2.,2)+pow(eps_xy,2));
-		eps2=(eps_xx+eps_yy)/2.-sqrt(pow((eps_xx-eps_yy)/2.,2)+pow(eps_xy,2));
-		if(fabs(eps2)>fabs(eps1)){epstmp=eps2; eps2=eps1; eps1=epstmp;}
-
-		/*Calculate effective strain rate and threshold strain rate*/
-		epseff=1./sqrt(2.)*sqrt(eps1*eps1-eps1*eps2+eps2*eps2);
-		eps0=pow(stress_threshold/B,n);
-
-		if(epseff>eps0){
-			f[i]=1.-pow(eps0/epseff,1./n)*exp(-(epseff-eps0)/(epsf-eps0))-damage;
-		}
-		else f[i]=0;
-
-		/*Edits from MM*/
-		if(f[i]>10.) f[i]=10.;
-		if(f[i]<-10.) f[i]=-10.;
-	}
-
-	/*Add input*/
-	element->AddInput(DamageFEnum,f,P1DGEnum);
-
-	/*Clean up and return*/
-	xDelete<IssmDouble>(f);
-	delete gauss;
-}/*}}}*/
 void           DamageEvolutionAnalysis::CreateDamageFInputPralong(Element* element){/*{{{*/
 
 	/*Intermediaries */
 	IssmDouble c1,c2,c3,healing,stress_threshold;
-	IssmDouble s_xx,s_xy,s_xz,s_yy,s_yz,s_zz,s1,s2,stmp;
-	IssmDouble Chi,Psi,PosPsi,NegPsi;
+	IssmDouble s_xx,s_xy,s_xz,s_yy,s_yz,s_zz,s1,s2,s3,stmp;
+	IssmDouble J2s,Chi,Psi,PosPsi,NegPsi;
 	IssmDouble damage,tau_xx,tau_xy,tau_xz,tau_yy,tau_yz,tau_zz,stressMaxPrincipal;
 	int equivstress,domaintype,dim;
 
@@ -398,8 +239,7 @@ void           DamageEvolutionAnalysis::CreateDamageFInputPralong(Element* eleme
 				Chi=s1;
 			}
 			Psi=Chi-stress_threshold;
-			//NegPsi=max(-Chi,0.); /* healing only for compressive stresses */
-			NegPsi=max(-Psi,0.); /* healing only for compressive stresses */
+			NegPsi=max(-Chi,0.); /* healing only for compressive stresses */
 			PosPsi=max(Psi,0.);
 			f[i]= c1*(pow(PosPsi,c2) - healing*pow(NegPsi,c2))*pow((1./(1.-damage)),c3);
 		}
@@ -412,12 +252,364 @@ void           DamageEvolutionAnalysis::CreateDamageFInputPralong(Element* eleme
 				Chi=sqrt(((s_xx-s_yy)*(s_xx-s_yy)+(s_yy-s_zz)*(s_yy-s_zz)+(s_zz-s_xx)*(s_zz-s_xx)+6.*(s_xy*s_xy+s_yz*s_yz+s_xz*s_xz))/2.);
 			}
 			Psi=Chi-stress_threshold;
-			//NegPsi=max(-Chi,0.); /* healing only for compressive stresses */
-			NegPsi=max(-Psi,0.); /* healing only for compressive stresses */
+			NegPsi=max(-Chi,0.); /* healing only for compressive stresses */
 			PosPsi=max(Psi,0.);
 			f[i]= c1*(pow(PosPsi,c2) - healing*pow(NegPsi,c2))*pow((1./(1.-damage)),c3);
 		}
 	}
+	/*Add input*/
+	element->AddInput(DamageFEnum,f,P1DGEnum);
+
+	/*Clean up and return*/
+	xDelete<IssmDouble>(f);
+	delete gauss;
+}/*}}}*/
+void           DamageEvolutionAnalysis::CreateDamageFInputBassis(Element* element){/*{{{*/
+
+	/* Intermediaries */
+	IssmDouble alpha,nstar,S0;
+	IssmDouble eps_xx,eps_xy,eps_yy;
+	IssmDouble eps1,eps2,epstmp;
+	IssmDouble damage;
+	IssmDouble h,rho_ice,rho_sw,g;
+	IssmDouble smb,bmb,mdot;
+	IssmDouble tau1;
+
+	/* Fetch number of vertices and allocate output */
+	int numnodes = element->GetNumberOfNodes();
+	IssmDouble* f = xNew<IssmDouble>(numnodes);
+
+	/* Retrieve parameters */
+	element->FindParam(&rho_ice,MaterialsRhoIceEnum);
+	element->FindParam(&rho_sw,MaterialsRhoSeawaterEnum);
+	element->FindParam(&g,ConstantsGEnum);
+
+	/* assume n = 3 for now */
+	const IssmDouble n = 3.;
+
+	/*Compute stress tensor: */
+	element->ComputeStrainRate();
+
+	/*retrieve what we need: */
+	Input* eps_xx_input  = element->GetInput(StrainRatexxEnum);     _assert_(eps_xx_input);
+	Input* eps_xy_input  = element->GetInput(StrainRatexyEnum);     _assert_(eps_xy_input);
+	Input* eps_yy_input  = element->GetInput(StrainRateyyEnum);     _assert_(eps_yy_input);
+
+	/* Calculate principal deviatoric stresses */
+	element->ComputeDeviatoricStressTensor();
+
+	Input* tau1_input = element->GetInput(DeviatoricStress1Enum);	_assert_(tau1_input);
+
+	Input* damage_input = element->GetInput(DamageDbarEnum);		_assert_(damage_input);
+	Input* thickness_input = element->GetInput(ThicknessEnum);		_assert_(thickness_input);
+
+	Input* smb_input = element->GetInput(SmbMassBalanceEnum);		_assert_(smb_input);
+	/*Input* bmb_input = element->GetInput(BasalforcingsFloatingiceMeltingRateEnum);	_assert_(bmb_input);
+
+
+	/* Calculate damage evolution source term */
+	Gauss* gauss = element->NewGauss();
+
+	for(int i=0;i<numnodes;i++){
+
+		gauss->GaussNode(element->GetElementType(),i);
+
+		/* Retrieve damage */
+		damage_input->GetInputValue(&damage,gauss);
+
+		/* Retrieve horizontal strain rates */
+		eps_xx_input->GetInputValue(&eps_xx,gauss);
+		eps_xy_input->GetInputValue(&eps_xy,gauss);
+		eps_yy_input->GetInputValue(&eps_yy,gauss);
+
+		/* Principal horizontal strain rates */
+		eps1 =
+			0.5*(eps_xx+eps_yy)
+			+
+			sqrt(
+				0.25*pow(eps_xx-eps_yy,2)
+				+
+				pow(eps_xy,2)
+			);
+
+		eps2 =
+			0.5*(eps_xx+eps_yy)
+			-
+			sqrt(
+				0.25*pow(eps_xx-eps_yy,2)
+				+
+				pow(eps_xy,2)
+			);
+
+		/* Make sure eps1 is the largest principal strain rate */
+		if(eps2 > eps1){
+			epstmp = eps2;
+			eps2 = eps1;
+			eps1 = epstmp;
+		}
+
+		/* Retrieve thickness */
+		thickness_input->GetInputValue(&h,gauss);
+
+		/* Retrieve first principal deviatoric stress */
+		tau1_input->GetInputValue(&tau1,gauss);
+
+		/* Retrieve surface and basal mass balance */
+		smb_input->GetInputValue(&smb,gauss);
+		/*bmb_input->GetInputValue(&bmb,gauss);*/
+
+		/* Positive accumulation and basal melt only */
+		mdot = max(smb,0.);
+
+		/* Avoid numerical problems */
+		if(h <= 0.){
+			f[i] = 0.;
+			continue;
+		}
+
+		/*
+		 * Eq. 13:
+		 *
+		 * alpha = eps2 / eps1
+		 *
+		 * nstar =
+		 * 4 n (1 + alpha + alpha^2)
+		 * --------------------------------------------
+		 * 4 (1 + alpha + alpha^2)
+		 * + 3 (n - 1) alpha^2
+		 */
+		if(fabs(eps1) > 1.e-20){
+
+			alpha = eps2/eps1;
+
+			nstar =
+				4.*n*(1.+alpha+alpha*alpha)
+				/
+				(
+					4.*(1.+alpha+alpha*alpha)
+					+
+					3.*(n-1.)*alpha*alpha
+				);
+		}
+		else{
+
+			/* No principal extension */
+			alpha = 0.;
+			nstar = n;
+		}
+
+		/*
+		 * Eq. 14:
+		 *
+		 * S0 =
+		 * rho_i (rho_sw-rho_i) g h
+		 * --------------------------
+		 *       2 tau1 rho_sw
+		 *
+		 * tau1 <= 0 corresponds to compression.
+		 */
+		if(fabs(tau1) > 1.e-20){
+
+			S0 =
+				rho_ice*(rho_sw-rho_ice)*g*h
+				/
+				(2.*tau1*rho_sw);
+		}
+		else{
+
+			/*
+			 * No tensile deviatoric stress:
+			 * gravitational damage production should vanish.
+			 */
+			S0 = 1.;
+		}
+
+		/*
+		 * Eq. 11:
+		 *
+		 * dD/dt =
+		 * [ nstar (1-S0) eps1 - mdot/h ] D
+		 *
+		 * The strain-induced term is applied only to
+		 * floating ice.
+		 */
+
+		if(element->IsAllFloating()){
+
+			f[i] =
+				(
+					nstar*(1.-S0)*eps1
+					-
+					mdot/h
+				)*damage;
+		}
+		else{
+
+			/* Grounded ice: no strain-induced damage */
+			f[i] =
+				-mdot/h*damage;
+		}
+	}
+
+	/* Add source term */
+	element->AddInput(DamageFEnum,f,P1DGEnum);
+
+	/* Clean up */
+	xDelete<IssmDouble>(f);
+	delete gauss;
+
+}/*}}}*/
+void           DamageEvolutionAnalysis::CreateDamageFInputArctan(Element* element){/*{{{*/
+	IssmDouble c1, c2, stress_threshold, stress_ubound;
+	IssmDouble damage;
+	IssmDouble yts;
+	IssmDouble principalDevStress1, principalDevStress2;
+	IssmDouble tensileStress, compressiveStress;
+
+	int equivstress, domaintype, dim;
+
+	/*Fetch number of vertices and allocate output*/
+	int numnodes = element->GetNumberOfNodes();
+	IssmDouble* f   = xNew<IssmDouble>(numnodes);
+
+	/*retrieve parameters:*/
+	element->FindParam(&c1,DamageC1Enum);
+	element->FindParam(&c2,DamageC2Enum);
+	element->FindParam(&yts,ConstantsYtsEnum);
+	element->FindParam(&stress_threshold,DamageStressThresholdEnum);
+	element->FindParam(&stress_ubound,DamageStressUBoundEnum);
+	element->FindParam(&domaintype,DomainTypeEnum);
+
+	/*Get problem dimension*/
+	switch(domaintype){
+		case Domain2DhorizontalEnum: dim = 2; break;
+		case Domain3DEnum:           dim = 3; break;
+		default: _error_("not implemented");
+	}
+	/*Compute stress tensor and Stress Max Principal: */
+	element->ComputeDeviatoricStressTensor();
+
+	Input* principalDevStress1_input = element->GetInput(DeviatoricStress1Enum);     _assert_(principalDevStress1_input);
+	Input* principalDevStress2_input = element->GetInput(DeviatoricStress2Enum);     _assert_(principalDevStress2_input);
+
+	Input* damage_input = NULL;
+	if(domaintype==Domain2DhorizontalEnum){
+		damage_input = element->GetInput(DamageDbarEnum); 	_assert_(damage_input);
+	}
+	else{
+		damage_input = element->GetInput(DamageDEnum);   _assert_(damage_input);
+	}
+
+	/*Calculate damage evolution source term */
+	Gauss* gauss=element->NewGauss();
+
+	/* To keep arctan output (bounded by -pi/2 and pi/2) within the specified boundaries */
+	c1 /= (PI/2);
+	c2 /= (PI/2);
+	/* To have per second output with per annum parameters */
+	c1 /= yts;
+	c2 /= yts;
+
+	for (int i=0;i<numnodes;i++){
+		f[i] = 0;
+
+		gauss->GaussNode(element->GetElementType(),i);
+
+		damage_input->GetInputValue(&damage,gauss);
+		principalDevStress1_input->GetInputValue(&principalDevStress1,gauss);
+		principalDevStress2_input->GetInputValue(&principalDevStress2,gauss);
+
+		tensileStress     = sqrt(1.5*(pow(max(principalDevStress1, 0.), 2) + pow(max(principalDevStress2, 0.), 2)));
+		compressiveStress = sqrt(1.5*(pow(min(principalDevStress1, 0.), 2) + pow(min(principalDevStress2, 0.), 2)));
+
+		/* Calculate principal effective stresses */
+		if(dim==2){
+			f[i] = 0;
+			if(tensileStress > stress_threshold)
+				f[i] += c1*atan((tensileStress/stress_threshold - 1)/(1-damage));
+
+			if(compressiveStress < stress_ubound)
+				f[i] += c2*atan((compressiveStress/stress_ubound - 1)/(1-damage));
+		}
+		else{
+			_error_("Only 2D is implemented.");
+		}
+	}
+
+	/*Add input*/
+	element->AddInput(DamageFEnum,f,element->GetElementType());
+
+	/*Clean up and return*/
+	xDelete<IssmDouble>(f);
+	delete gauss;
+}/*}}}*/
+void           DamageEvolutionAnalysis::CreateDamageFInputExp(Element* element){/*{{{*/
+
+	/*Intermediaries */
+	IssmDouble epsf,stress_threshold,eps0;
+	IssmDouble damage,B,n,epseff;
+	IssmDouble eps_xx,eps_yy,eps_xy,eps1,eps2,epstmp;
+	int domaintype;
+
+	/*Fetch number of vertices and allocate output*/
+	int numnodes = element->GetNumberOfNodes();
+	IssmDouble* f   = xNew<IssmDouble>(numnodes);
+
+	/*retrieve parameters:*/
+	element->FindParam(&epsf,DamageC1Enum);
+	element->FindParam(&stress_threshold,DamageStressThresholdEnum);
+	element->FindParam(&domaintype,DomainTypeEnum);
+
+	/*Compute stress tensor: */
+	element->ComputeStrainRate();
+
+	/*retrieve what we need: */
+	Input* eps_xx_input  = element->GetInput(StrainRatexxEnum);     _assert_(eps_xx_input);
+	Input* eps_xy_input  = element->GetInput(StrainRatexyEnum);     _assert_(eps_xy_input);
+	Input* eps_yy_input  = element->GetInput(StrainRateyyEnum);     _assert_(eps_yy_input);
+	Input*  n_input=element->GetInput(MaterialsRheologyNEnum); _assert_(n_input);
+	Input* damage_input = NULL;
+	Input* B_input = NULL;
+	if(domaintype==Domain2DhorizontalEnum){
+		damage_input = element->GetInput(DamageDbarEnum); 	_assert_(damage_input);
+		B_input=element->GetInput(MaterialsRheologyBbarEnum); _assert_(B_input);
+	}
+	else{
+		damage_input = element->GetInput(DamageDEnum);   _assert_(damage_input);
+		B_input=element->GetInput(MaterialsRheologyBEnum); _assert_(B_input);
+	}
+
+	/*Calculate damage evolution source term: */
+	Gauss* gauss=element->NewGauss();
+	for (int i=0;i<numnodes;i++){
+		gauss->GaussNode(element->GetElementType(),i);
+
+		eps_xx_input->GetInputValue(&eps_xx,gauss);
+		eps_xy_input->GetInputValue(&eps_xy,gauss);
+		eps_yy_input->GetInputValue(&eps_yy,gauss);
+		B_input->GetInputValue(&B,gauss);
+		n_input->GetInputValue(&n,gauss);
+		damage_input->GetInputValue(&damage,gauss);
+
+		/*Calculate principal effective strain rates*/
+		eps1=(eps_xx+eps_yy)/2.+sqrt(pow((eps_xx-eps_yy)/2.,2)+pow(eps_xy,2));
+		eps2=(eps_xx+eps_yy)/2.-sqrt(pow((eps_xx-eps_yy)/2.,2)+pow(eps_xy,2));
+		if(fabs(eps2)>fabs(eps1)){epstmp=eps2; eps2=eps1; eps1=epstmp;}
+
+		/*Calculate effective strain rate and threshold strain rate*/
+		epseff=1./sqrt(2.)*sqrt(eps1*eps1-eps1*eps2+eps2*eps2);
+		eps0=pow(stress_threshold/B,n);
+
+		if(epseff>eps0){
+			f[i]=1.-pow(eps0/epseff,1./n)*exp(-(epseff-eps0)/(epsf-eps0))-damage;
+		}
+		else f[i]=0;
+
+		/*Edits from MM*/
+		if(f[i]>10.) f[i]=10.;
+		if(f[i]<-10.) f[i]=-10.;
+	}
+
 	/*Add input*/
 	element->AddInput(DamageFEnum,f,P1DGEnum);
 
@@ -637,9 +829,12 @@ ElementVector* DamageEvolutionAnalysis::CreatePVector(Element* element){/*{{{*/
 			this->CreateDamageFInputPralong(element);
 			break;
 		case 2:
-			this->CreateDamageFInputExp(element);
+			this->CreateDamageFInputBassis(element);
 			break;
 		case 3:
+			this->CreateDamageFInputExp(element);
+			break;
+		case 4:
 			this->CreateDamageFInputArctan(element);
 			break;
 		default:

@@ -42,7 +42,7 @@ function damage (){
 
 		fielddisplay(this,'isdamage','is damage mechanics being used? {true,false}');
 		if (this.isdamage){
-			fielddisplay(this,'law',"damage law ['0: analytical','1: pralong']");
+			fielddisplay(this,'law',"damage law ['0: analytical','1: pralong', '2: bassis','3: exponential (experimental)','4: arctan (experimental)']");
 			fielddisplay(this,'D','damage tensor (scalar)');
 			fielddisplay(this,'spcdamage','damage constraints (NaN means no constraint)');
 			fielddisplay(this,'max_damage','maximum possible damage (0<=max_damage<1)');
@@ -73,7 +73,7 @@ function damage (){
 			
 			checkfield(md,'fieldname','damage.isdamage','values',[1,0]);
 			if (this.isdamage){
-				checkfield(md,'fieldname','damage.law','numel',[1],'values',[0,1,2]);
+				checkfield(md,'fieldname','damage.law','numel',[1],'values',[0,1,2,3,4]);
 				checkfield(md,'fieldname','damage.D','>=',0,'<=',this.max_damage,'size',[md.mesh.numberofvertices ,1]);
 				checkfield(md,'fieldname','damage.spcdamage','Inf',1,'timeseries',1);
 				checkfield(md,'fieldname','damage.max_damage','<',1,'>=',0);
