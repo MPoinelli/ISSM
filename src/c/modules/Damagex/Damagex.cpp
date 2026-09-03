@@ -22,14 +22,21 @@ void Damagex(FemModel* femmodel){
 			femmodel->ElementOperationx(&Element::ComputeNewDamage);
 			break;
 		case 1:
+			if(VerboseModule()) _printf0_("   computing damage (Pralong) using source term in advection scheme\n");
+			/* Damage calculated using source term in DamageEvolutionAnalysis */
+			break;
 		case 2:
-			if(VerboseModule()) _printf0_("   computing damage using source term in advection scheme\n");
+			if(VerboseModule()) _printf0_("   computing damage (Bassis) using source term in advection scheme\n");
 			/* Damage calculated using source term in DamageEvolutionAnalysis */
 			break;
 		case 3:
-			if(VerboseModule()) _printf0_("   computing damage using source term in advection scheme\n");
+			if(VerboseModule()) _printf0_("   computing damage (exponential) using source term in advection scheme\n");
 			/* Damage calculated using source term in DamageEvolutionAnalysis */
 			break;
+		case 4:
+			if(VerboseModule()) _printf0_("   computing damage (arctan) using source term in advection scheme\n");
+				/* Damage calculated using source term in DamageEvolutionAnalysis */
+				break;
 		default:
 			_error_("Damage law "<<EnumToStringx(damagelaw)<<" not implemented yet");
 	}
