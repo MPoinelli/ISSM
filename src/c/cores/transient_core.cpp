@@ -212,8 +212,6 @@ void transient_step(FemModel* femmodel){/*{{{*/
 
 	if(isstressbalance && (step%sb_coupling_frequency==0 || step==1)) stressbalance_core(femmodel);
 
-	if(isdamageevolution) damage_core(femmodel);
-
 	if(ismovingfront)	movingfront_core(femmodel);
 
 	if(isdebris) debris_core(femmodel);
@@ -241,6 +239,8 @@ void transient_step(FemModel* femmodel){/*{{{*/
 	if(ismmemasstransport){
 		mmemasstransport_core(femmodel);
 	}
+
+	if(isdamageevolution) damage_core(femmodel);
 
 	if(isoceantransport) oceantransport_core(femmodel);
 

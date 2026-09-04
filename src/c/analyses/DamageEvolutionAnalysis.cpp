@@ -267,198 +267,82 @@ void           DamageEvolutionAnalysis::CreateDamageFInputPralong(Element* eleme
 void           DamageEvolutionAnalysis::CreateDamageFInputBassis(Element* element){/*{{{*/
 
 	/* Intermediaries */
-	IssmDouble alpha,nstar,S0;
-	IssmDouble eps_xx,eps_xy,eps_yy;
-	IssmDouble eps1,eps2,epstmp;
-	IssmDouble damage;
-	IssmDouble h,rho_ice,rho_sw,g;
-	IssmDouble smb,bmb,mdot;
-	IssmDouble tau1;
+	IssmDouble eps_xx, eps_xy, eps_yy, eps1, eps2, epstmp, tau1;
+	IssmDouble h,rho_ice, rho_sw, g;
+	IssmDouble S0, alpha, n, nstar, damage;
+	IssmDouble smb,fmb,mdot;
+ 
+    int numnodes = element->GetNumberOfNodes();
+    IssmDouble* f = xNew<IssmDouble>(numnodes);
 
-	/* Fetch number of vertices and allocate output */
-	int numnodes = element->GetNumberOfNodes();
-	IssmDouble* f = xNew<IssmDouble>(numnodes);
-
-	/* Retrieve parameters */
 	element->FindParam(&rho_ice,MaterialsRhoIceEnum);
-	element->FindParam(&rho_sw,MaterialsRhoSeawaterEnum);
-	element->FindParam(&g,ConstantsGEnum);
+    element->FindParam(&rho_sw,MaterialsRhoSeawaterEnum);
+    element->FindParam(&g,ConstantsGEnum);
 
-	/* assume n = 3 for now */
-	const IssmDouble n = 3.;
+    /* Compute strain rate */
+    element->ComputeStrainRate();
 
-	/*Compute stress tensor: */
-	element->ComputeStrainRate();
+    /* Retrieve strain-rate inputs */
+    Input* eps_xx_input = element->GetInput(StrainRatexxEnum);		_assert_(eps_xx_input);
+    Input* eps_xy_input = element->GetInput(StrainRatexyEnum);		_assert_(eps_xy_input);
+    Input* eps_yy_input = element->GetInput(StrainRateyyEnum);	    _assert_(eps_yy_input);
+	
+	Input*  n_input=element->GetInput(MaterialsRheologyNEnum); _assert_(n_input);
 
-	/*retrieve what we need: */
-	Input* eps_xx_input  = element->GetInput(StrainRatexxEnum);     _assert_(eps_xx_input);
-	Input* eps_xy_input  = element->GetInput(StrainRatexyEnum);     _assert_(eps_xy_input);
-	Input* eps_yy_input  = element->GetInput(StrainRateyyEnum);     _assert_(eps_yy_input);
-
-	/* Calculate principal deviatoric stresses */
 	element->ComputeDeviatoricStressTensor();
 
-	Input* tau1_input = element->GetInput(DeviatoricStress1Enum);	_assert_(tau1_input);
+	Input* tau1_input = element->GetInput(DeviatoricStress1Enum); 	_assert_(tau1_input);
 
-	Input* damage_input = element->GetInput(DamageDbarEnum);		_assert_(damage_input);
-	Input* thickness_input = element->GetInput(ThicknessEnum);		_assert_(thickness_input);
+	Input* damage_input 	= element->GetInput(DamageDbarEnum);        					_assert_(damage_input);
+    Input* thickness_input 	= element->GetInput(ThicknessEnum);      						_assert_(thickness_input);
+    Input* smb_input 		= element->GetInput(SmbMassBalanceEnum);       					_assert_(smb_input);
+	Input* fmb_input        = element->GetInput(BasalforcingsFloatingiceMeltingRateEnum);  	_assert_(fmb_input);
 
-	Input* smb_input = element->GetInput(SmbMassBalanceEnum);		_assert_(smb_input);
-	/*Input* bmb_input = element->GetInput(BasalforcingsFloatingiceMeltingRateEnum);	_assert_(bmb_input);
+    Gauss* gauss = element->NewGauss();
+    for(int i=0;i<numnodes;i++){
 
-
-	/* Calculate damage evolution source term */
-	Gauss* gauss = element->NewGauss();
-
-	for(int i=0;i<numnodes;i++){
-
-		gauss->GaussNode(element->GetElementType(),i);
+        gauss->GaussNode(element->GetElementType(),i);
 
 		/* Retrieve damage */
-		damage_input->GetInputValue(&damage,gauss);
-
-		/* Retrieve horizontal strain rates */
-		eps_xx_input->GetInputValue(&eps_xx,gauss);
-		eps_xy_input->GetInputValue(&eps_xy,gauss);
-		eps_yy_input->GetInputValue(&eps_yy,gauss);
-
-		/* Principal horizontal strain rates */
-		eps1 =
-			0.5*(eps_xx+eps_yy)
-			+
-			sqrt(
-				0.25*pow(eps_xx-eps_yy,2)
-				+
-				pow(eps_xy,2)
-			);
-
-		eps2 =
-			0.5*(eps_xx+eps_yy)
-			-
-			sqrt(
-				0.25*pow(eps_xx-eps_yy,2)
-				+
-				pow(eps_xy,2)
-			);
-
-		/* Make sure eps1 is the largest principal strain rate */
-		if(eps2 > eps1){
-			epstmp = eps2;
-			eps2 = eps1;
-			eps1 = epstmp;
-		}
+        damage_input->GetInputValue(&damage,gauss);
 
 		/* Retrieve thickness */
-		thickness_input->GetInputValue(&h,gauss);
+        thickness_input->GetInputValue(&h,gauss);
 
-		/* Retrieve first principal deviatoric stress */
-		tau1_input->GetInputValue(&tau1,gauss);
-
-		/* Retrieve surface and basal mass balance */
+		/* Retrieve SMB and basal melt */
 		smb_input->GetInputValue(&smb,gauss);
-		/*bmb_input->GetInputValue(&bmb,gauss);*/
+		fmb_input->GetInputValue(&fmb,gauss);
 
+		/* Retrieve strain rates */
+        eps_xx_input->GetInputValue(&eps_xx,gauss);
+        eps_xy_input->GetInputValue(&eps_xy,gauss);
+        eps_yy_input->GetInputValue(&eps_yy,gauss);
+
+        /* Principal strain rates */
+        eps1 = (eps_xx+eps_yy)/2. + sqrt(pow((eps_xx-eps_yy)/2.,2)+pow(eps_xy,2));
+        eps2 = (eps_xx+eps_yy)/2. - sqrt(pow((eps_xx-eps_yy)/2.,2)+pow(eps_xy,2));
+		if(fabs(eps2)>fabs(eps1)){epstmp=eps2; eps2=eps1; eps1=epstmp;}
+
+		n_input->GetInputValue(&n,gauss);
+        tau1_input->GetInputValue(&tau1,gauss);
+		
 		/* Positive accumulation and basal melt only */
-		mdot = max(smb,0.);
+        mdot = max(smb,0.) + max(fmb,0.);
+		
+		alpha = eps2/eps1;
+        
+		nstar = 4.*n*(1.+alpha+alpha*alpha)/(4.*(1.+alpha+alpha*alpha)+3.*(n-1.)*alpha*alpha);
 
-		/* Avoid numerical problems */
-		if(h <= 0.){
-			f[i] = 0.;
-			continue;
-		}
+		S0 = rho_ice*(rho_sw-rho_ice)*g*h / (2.*tau1*rho_sw);
 
-		/*
-		 * Eq. 13:
-		 *
-		 * alpha = eps2 / eps1
-		 *
-		 * nstar =
-		 * 4 n (1 + alpha + alpha^2)
-		 * --------------------------------------------
-		 * 4 (1 + alpha + alpha^2)
-		 * + 3 (n - 1) alpha^2
-		 */
-		if(fabs(eps1) > 1.e-20){
+        f[i] = (nstar * (1. - S0) *  eps1 - mdot/h) * damage;
+    }
 
-			alpha = eps2/eps1;
+    element->AddInput(DamageFEnum,f,P1DGEnum);
 
-			nstar =
-				4.*n*(1.+alpha+alpha*alpha)
-				/
-				(
-					4.*(1.+alpha+alpha*alpha)
-					+
-					3.*(n-1.)*alpha*alpha
-				);
-		}
-		else{
-
-			/* No principal extension */
-			alpha = 0.;
-			nstar = n;
-		}
-
-		/*
-		 * Eq. 14:
-		 *
-		 * S0 =
-		 * rho_i (rho_sw-rho_i) g h
-		 * --------------------------
-		 *       2 tau1 rho_sw
-		 *
-		 * tau1 <= 0 corresponds to compression.
-		 */
-		if(fabs(tau1) > 1.e-20){
-
-			S0 =
-				rho_ice*(rho_sw-rho_ice)*g*h
-				/
-				(2.*tau1*rho_sw);
-		}
-		else{
-
-			/*
-			 * No tensile deviatoric stress:
-			 * gravitational damage production should vanish.
-			 */
-			S0 = 1.;
-		}
-
-		/*
-		 * Eq. 11:
-		 *
-		 * dD/dt =
-		 * [ nstar (1-S0) eps1 - mdot/h ] D
-		 *
-		 * The strain-induced term is applied only to
-		 * floating ice.
-		 */
-
-		if(element->IsAllFloating()){
-
-			f[i] =
-				(
-					nstar*(1.-S0)*eps1
-					-
-					mdot/h
-				)*damage;
-		}
-		else{
-
-			/* Grounded ice: no strain-induced damage */
-			f[i] =
-				-mdot/h*damage;
-		}
-	}
-
-	/* Add source term */
-	element->AddInput(DamageFEnum,f,P1DGEnum);
-
-	/* Clean up */
-	xDelete<IssmDouble>(f);
-	delete gauss;
-
-}/*}}}*/
+    xDelete<IssmDouble>(f);
+    delete gauss;
+} /*}}}*/
 void           DamageEvolutionAnalysis::CreateDamageFInputArctan(Element* element){/*{{{*/
 	IssmDouble c1, c2, stress_threshold, stress_ubound;
 	IssmDouble damage;
