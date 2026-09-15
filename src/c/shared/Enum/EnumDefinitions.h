@@ -882,6 +882,8 @@ enum definitions{
 	DamageDbarEnum,
 	DamageDbarOldEnum,
 	DamageFEnum,
+	DamageS0Enum,
+	DamageNstarEnum,
 	DebrisThicknessEnum,
 	DegreeOfChannelizationEnum,
 	DepthBelowSurfaceEnum,

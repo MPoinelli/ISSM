@@ -275,6 +275,9 @@ void           DamageEvolutionAnalysis::CreateDamageFInputBassis(Element* elemen
     int numnodes = element->GetNumberOfNodes();
     IssmDouble* f = xNew<IssmDouble>(numnodes);
 
+	IssmDouble* S0_array = xNew<IssmDouble>(numnodes);
+	IssmDouble* nstar_array = xNew<IssmDouble>(numnodes);
+
 	element->FindParam(&rho_ice,MaterialsRhoIceEnum);
     element->FindParam(&rho_sw,MaterialsRhoSeawaterEnum);
     element->FindParam(&g,ConstantsGEnum);
@@ -321,11 +324,13 @@ void           DamageEvolutionAnalysis::CreateDamageFInputBassis(Element* elemen
         /* Principal strain rates */
         eps1 = (eps_xx+eps_yy)/2. + sqrt(pow((eps_xx-eps_yy)/2.,2)+pow(eps_xy,2));
         eps2 = (eps_xx+eps_yy)/2. - sqrt(pow((eps_xx-eps_yy)/2.,2)+pow(eps_xy,2));
-		if(fabs(eps2)>fabs(eps1)){epstmp=eps2; eps2=eps1; eps1=epstmp;}
+		//if(fabs(eps2)>fabs(eps1)){epstmp=eps2; eps2=eps1; eps1=epstmp;}
 
 		n_input->GetInputValue(&n,gauss);
         tau1_input->GetInputValue(&tau1,gauss);
 		
+		//if(tau1<1e-2) tau1=1e-2; /* Avoid division by zero */
+
 		/* Positive accumulation and basal melt only */
         mdot = max(smb,0.) + max(fmb,0.);
 		
@@ -334,14 +339,24 @@ void           DamageEvolutionAnalysis::CreateDamageFInputBassis(Element* elemen
 		nstar = 4.*n*(1.+alpha+alpha*alpha)/(4.*(1.+alpha+alpha*alpha)+3.*(n-1.)*alpha*alpha);
 
 		S0 = rho_ice*(rho_sw-rho_ice)*g*h / (2.*tau1*rho_sw);
+		
+		if(S0 < -100.) S0 = -100.;
+		if(S0 >  100.) S0 = 100.;
 
         f[i] = (nstar * (1. - S0) *  eps1 - mdot/h) * damage;
+		nstar_array[i] = nstar;
+		S0_array[i] = S0;
+	
     }
 
-    element->AddInput(DamageFEnum,f,P1DGEnum);
+	element->AddInput(DamageFEnum,f,P1DGEnum);
+	element->AddInput(DamageS0Enum,S0_array,P1DGEnum);
+	element->AddInput(DamageNstarEnum,nstar_array,P1DGEnum);
 
-    xDelete<IssmDouble>(f);
-    delete gauss;
+	xDelete<IssmDouble>(f);
+	xDelete<IssmDouble>(S0_array);
+	xDelete<IssmDouble>(nstar_array);
+	delete gauss;
 } /*}}}*/
 void           DamageEvolutionAnalysis::CreateDamageFInputArctan(Element* element){/*{{{*/
 	IssmDouble c1, c2, stress_threshold, stress_ubound;
